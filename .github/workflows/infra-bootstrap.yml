@@ -1,0 +1,65 @@
+name: Infra bootstrap (one-time)
+
+# Run this ONCE, manually, to seed AWS: the state bucket, the GitHub OIDC
+# provider, the deploy/terraform IAM roles and ECR. It is the only workflow that
+# uses static AWS keys (repo secrets AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY).
+# After it succeeds, everything else runs via OIDC and the keys can be removed.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS credentials (static keys, one-time)
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_wrapper: false
+
+      - name: Resolve state bucket and mode
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          CALLER=$(aws sts get-caller-identity --query Arn --output text)
+          MANAGE_IAM="${{ vars.MANAGE_IAM }}"
+          if [ -z "$MANAGE_IAM" ]; then
+            echo "$CALLER" | grep -qiE 'voclabs|labrole' && MANAGE_IAM=false || MANAGE_IAM=true
+          fi
+          {
+            echo "STATE_BUCKET=auto-repair-shop-tfstate-${ACCOUNT_ID}"
+            echo "MANAGE_IAM=$MANAGE_IAM"
+          } >> "$GITHUB_ENV"
+
+      - name: Ensure the Terraform state bucket exists
+        run: |
+          if aws s3api head-bucket --bucket "$STATE_BUCKET" 2>/dev/null; then
+            echo "state bucket already exists, skipping"
+          else
+            terraform -chdir=terraform/bootstrap init
+            terraform -chdir=terraform/bootstrap apply -auto-approve \
+              -var "state_bucket_name=$STATE_BUCKET"
+          fi
+
+      - name: Apply shared (ECR + optionally OIDC provider + IAM roles)
+        run: |
+          terraform -chdir=terraform/shared init \
+            -backend-config="bucket=$STATE_BUCKET"
+          terraform -chdir=terraform/shared apply -auto-approve \
+            -var "manage_iam=$MANAGE_IAM"
+
+      - name: Show outputs (copy these into GitHub Environments)
+        run: terraform -chdir=terraform/shared output

@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars and adjust. Never commit a real terraform.tfvars.
+# Per-environment sizing (nodes, multi-AZ) is chosen by the workspace
+# (stg|prd) in locals.tf, not here. RDS sizing lives in the sibling
+# auto-repair-shop-infra-db repo.
+region             = "us-east-1"
+project            = "auto-repair-shop"
+kubernetes_version = "1.31"
+
+vpc_cidr = "10.0.0.0/16"
+
+# state_bucket is normally passed by the workflows (derived from the account id);
+# set it here only for local runs: auto-repair-shop-tfstate-<account_id>.
+# state_bucket = "auto-repair-shop-tfstate-000000000000"
+
+# Restricted accounts (e.g. AWS Academy Learner Lab): skip IAM creation and reuse
+# an existing role for the EKS cluster/nodes. Leave manage_iam = true on a full
+# account.
+# manage_iam         = false
+# execution_role_arn = "arn:aws:iam::000000000000:role/LabRole"
