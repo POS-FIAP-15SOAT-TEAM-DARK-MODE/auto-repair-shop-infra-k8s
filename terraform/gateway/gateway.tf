@@ -89,6 +89,15 @@ resource "aws_apigatewayv2_stage" "main" {
   name        = local.environment
   auto_deploy = true
 
+  # route_settings.route_key below is a plain string, so Terraform can't
+  # infer the dependency on the route resource that actually creates it -
+  # without this, the stage can get created in parallel with the routes and
+  # AWS rejects it (404: route not found yet).
+  depends_on = [
+    aws_apigatewayv2_route.customer_login,
+    aws_apigatewayv2_route.app_proxy,
+  ]
+
   default_route_settings {
     throttling_rate_limit  = var.default_rate_limit
     throttling_burst_limit = var.default_burst_limit
