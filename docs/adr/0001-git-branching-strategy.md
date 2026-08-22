@@ -7,20 +7,20 @@
 
 ## Context
 
-The Tech Challenge Fase 3 brief mandates, for all 4 repositories: a protected `main`/`master` branch with no direct commits, and mandatory Pull Requests for merges. Before this decision, this repo had no branch protection at all.
+Our engineering governance policy requires, across all 4 repositories: a protected `main`/`master` branch with no direct commits, and mandatory Pull Requests for merges. Before this decision, this repo had no branch protection at all.
 
 Like `auto-repair-shop-infra-db`, this repo's Terraform workflow selects `stg`/`prd` via a `workflow_dispatch` input (a Terraform workspace), not by git branch — so `develop` here is a review-staging convention, not a deploy-environment trigger.
 
 ## Decision
 
-Adopt the same two-stage flow as the other 3 Tech Challenge repos: feature/fix branches → PR into `develop`; `develop` → PR into `main`. Both branches are GitHub branch-protected: PR required to merge, enforced even for repo admins, no force-push, no branch deletion, 0 required approvals.
+Adopt the same two-stage flow as the other 3 repos: feature/fix branches → PR into `develop`; `develop` → PR into `main`. Both branches are GitHub branch-protected: PR required to merge, enforced even for repo admins, no force-push, no branch deletion, 0 required approvals.
 
 ## Consequences
 
 ### Positive
 
-- Matches the brief's explicit requirement.
-- Consistent convention across all 4 Tech Challenge repos.
+- Matches our governance policy.
+- Consistent convention across all 4 repos.
 
 ### Negative
 
