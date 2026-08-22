@@ -69,21 +69,24 @@ Actions via OIDC (or static keys only for the one-time bootstrap step).
 (STG/PRD), and share the same value with `auto-repair-shop-infra-db` if it
 needs it.
 
-**Provision the API Gateway** (`gateway` layer, after the app itself has
-been deployed at least once — see below for why):
-1. Deploy `auto-repair-shop-lambda-auth` first (its `function_arn` is read
-   here via `terraform_remote_state`).
-2. Deploy the app (`auto-repair-shop`'s `Docker` workflow) and grab its
-   public LoadBalancer hostname from that run's "App is up" summary (or
-   `kubectl get svc -n auto-repair-shop auto-repair-shop`).
-3. Set repo variable `APP_BACKEND_HOST` to that hostname (Settings →
-   Secrets and variables → Actions → Variables — this is not a secret, but
-   it does change if the Service is ever recreated, so re-set it after any
-   redeploy that gets a new ELB).
-4. Run **Infra (Terraform)** with `layer=gateway`, `environment=stg`,
-   `action=apply`. Output `api_endpoint` is the public base URL —
-   `POST {api_endpoint}/auth/customer-login` for a token, everything else
-   proxies straight through to the app.
+**Provision the API Gateway** (`gateway` layer, after both of these have
+already run at least once):
+1. `auto-repair-shop-lambda-auth` deployed (its `function_arn` is read here
+   via `terraform_remote_state`).
+2. `auto-repair-shop`'s `Docker` workflow deployed the app at least once.
+   Its deploy job publishes the app's public LoadBalancer hostname to SSM
+   parameter `/auto-repair-shop/<env>/app-backend-host` as its last step —
+   this state reads that automatically via a data source, no manual
+   variable to set (the ELB itself is Kubernetes-created, not
+   Terraform-managed, so this SSM parameter is the handoff point between
+   the two control planes).
+
+Then run **Infra (Terraform)** with `layer=gateway`, `environment=stg`,
+`action=apply`. Output `api_endpoint` is the public base URL —
+`POST {api_endpoint}/auth/customer-login` for a token, everything else
+proxies straight through to the app. Re-running `apply` after any app
+redeploy picks up a new ELB hostname automatically, next time the SSM
+parameter changes.
 
 PRs touching `terraform/**` get an automatic `fmt` + `validate` (no
 credentials required).

@@ -2,7 +2,6 @@ region       = "us-east-1"
 project      = "auto-repair-shop"
 state_bucket = "auto-repair-shop-tfstate-<account_id>"
 
-# The app's public LoadBalancer hostname (from `kubectl get svc -n
-# auto-repair-shop auto-repair-shop`, or the app repo's docker.yml deploy
-# summary). Changes if the Service is ever recreated.
-app_backend_host = "<elb-hostname>.us-east-1.elb.amazonaws.com"
+# The app's public LoadBalancer hostname is read automatically from SSM
+# parameter /auto-repair-shop/<env>/app-backend-host, published by
+# auto-repair-shop's docker.yml on every deploy — nothing to set here.

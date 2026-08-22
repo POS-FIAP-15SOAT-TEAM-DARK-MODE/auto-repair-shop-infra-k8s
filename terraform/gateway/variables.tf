@@ -21,11 +21,6 @@ variable "manage_iam" {
   default = true
 }
 
-variable "app_backend_host" {
-  description = "Public hostname of the app's Kubernetes LoadBalancer Service (e.g. the Classic ELB DNS name printed by auto-repair-shop's docker.yml deploy). Not Terraform-managed here since it's created by Kubernetes, not this state — set as the APP_BACKEND_HOST repo variable and threaded in by the workflow."
-  type        = string
-}
-
 variable "auth_route_rate_limit" {
   description = "Requests/sec allowed on the auth routes (login endpoints), steady-state."
   type        = number

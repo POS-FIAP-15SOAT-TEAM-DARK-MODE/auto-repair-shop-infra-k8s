@@ -109,7 +109,7 @@ jobs:
           case "${{ inputs.layer }}" in
             aws)     VARS+=(-var "state_bucket=$STATE_BUCKET" -var "execution_role_arn=$EXECUTION_ROLE_ARN") ;;
             addons)  VARS+=(-var "state_bucket=$STATE_BUCKET") ;;
-            gateway) VARS+=(-var "state_bucket=$STATE_BUCKET" -var "app_backend_host=${{ vars.APP_BACKEND_HOST }}") ;;
+            gateway) VARS+=(-var "state_bucket=$STATE_BUCKET") ;;
           esac
           terraform ${{ inputs.action }} ${{ (inputs.action == 'apply' || inputs.action == 'destroy') && '-auto-approve' || '' }} "${VARS[@]}"
 

@@ -58,11 +58,21 @@ resource "aws_lambda_permission" "apigw_invoke_login" {
 # route (public and protected alike). The app's own auth middleware — already
 # correct, zero extra DB calls — is what actually enforces auth, exactly as
 # it does today without the gateway in front of it.
+#
+# The ELB's hostname isn't a Terraform-managed resource (it's created by
+# Kubernetes' in-tree AWS provider from the app's LoadBalancer Service, not
+# by any `apply` here), so there's no output to read via terraform_remote_state.
+# The app's own deploy workflow publishes it to this SSM parameter as the
+# last step of every deploy — see auto-repair-shop's docker.yml.
+data "aws_ssm_parameter" "app_backend_host" {
+  name = "/${var.project}/${local.environment}/app-backend-host"
+}
+
 resource "aws_apigatewayv2_integration" "app" {
   api_id                 = aws_apigatewayv2_api.main.id
   integration_type       = "HTTP_PROXY"
   integration_method     = "ANY"
-  integration_uri        = "http://${var.app_backend_host}/{proxy}"
+  integration_uri        = "http://${data.aws_ssm_parameter.app_backend_host.value}/{proxy}"
   payload_format_version = "1.0"
 }
 
