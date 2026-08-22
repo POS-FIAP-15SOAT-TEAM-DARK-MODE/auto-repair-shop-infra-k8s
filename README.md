@@ -160,6 +160,10 @@ flowchart TB
     gha -->|"OIDC (no static keys)"| iam
 ```
 
+Time-ordered view of the same system — the CPF login through the gateway
+and lambda, and how the resulting token gets used later at service-order
+approval: [docs/diagrams/authentication-and-service-order-sequence.md](docs/diagrams/authentication-and-service-order-sequence.md).
+
 ## Related repositories
 
 - [auto-repair-shop](https://github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop) — the application deployed onto this cluster; the `gateway` state proxies to its public LoadBalancer
