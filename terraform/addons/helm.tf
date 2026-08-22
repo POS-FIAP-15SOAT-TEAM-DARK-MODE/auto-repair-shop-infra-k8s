@@ -67,3 +67,44 @@ resource "helm_release" "external_secrets" {
     value = module.eso_irsa[0].iam_role_arn
   }
 }
+
+# kube-prometheus-stack — Prometheus + Grafana + node-exporter + kube-state-metrics.
+# Collects node/pod CPU & memory and ships pre-built Grafana dashboards for
+# them (no manual dashboard authoring needed). Needs no AWS permissions, so it
+# runs the same way on restricted (Learner Lab) accounts. Persistence is
+# disabled: there is no EBS CSI driver installed here, and Prometheus data
+# does not need to survive a pod restart for this use case.
+resource "random_password" "grafana_admin" {
+  length  = 20
+  special = false
+}
+
+resource "helm_release" "kube_prometheus_stack" {
+  name             = "kube-prometheus-stack"
+  repository       = "https://prometheus-community.github.io/helm-charts"
+  chart            = "kube-prometheus-stack"
+  namespace        = "monitoring"
+  create_namespace = true
+
+  # Control-plane component scraping (controller-manager/scheduler/etcd/kube-proxy)
+  # is disabled: on managed EKS those endpoints are not reachable, and left on
+  # they just show up as permanently failing targets.
+  values = [yamlencode({
+    alertmanager = { enabled = false }
+    prometheus = {
+      prometheusSpec = {
+        retention = "6h"
+        resources = { requests = { cpu = "100m", memory = "256Mi" } }
+      }
+    }
+    grafana = {
+      adminPassword = random_password.grafana_admin.result
+      persistence   = { enabled = false }
+      resources     = { requests = { cpu = "50m", memory = "128Mi" } }
+    }
+    kubeControllerManager = { enabled = false }
+    kubeScheduler         = { enabled = false }
+    kubeEtcd              = { enabled = false }
+    kubeProxy             = { enabled = false }
+  })]
+}

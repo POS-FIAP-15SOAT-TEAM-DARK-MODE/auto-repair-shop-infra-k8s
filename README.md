@@ -18,7 +18,7 @@ with their own CI/CD.
 - AWS: VPC, EKS, ECR, IAM (OIDC for GitHub Actions), Secrets Manager access
   (via the `addons` state's External Secrets Operator IRSA role)
 - Helm (via the `addons` state): AWS Load Balancer Controller, metrics-server,
-  External Secrets Operator
+  External Secrets Operator, kube-prometheus-stack (Prometheus + Grafana)
 - GitHub Actions (OIDC — no long-lived AWS keys after bootstrap)
 
 ## Structure — 4 independent Terraform states
@@ -28,14 +28,14 @@ with their own CI/CD.
 | `terraform/bootstrap/` | S3 bucket for remote tfstate (versioned, encrypted, native locking) — shared with `auto-repair-shop-infra-db` | run once |
 | `terraform/shared/` | ECR (app image repo) · GitHub OIDC provider · IAM roles (`deploy-stg/prd`, `terraform`) | run once |
 | `terraform/aws/` | VPC · EKS (per Terraform workspace `stg`/`prd`) | per environment |
-| `terraform/addons/` | Helm add-ons: ALB Controller · metrics-server · External Secrets (+ IRSA) | per environment |
+| `terraform/addons/` | Helm add-ons: ALB Controller · metrics-server · External Secrets (+ IRSA) · kube-prometheus-stack | per environment |
 
 ```
 terraform/
 ├── bootstrap/   # S3 state bucket (run once)
 ├── shared/      # ECR + GitHub OIDC + IAM roles (run once)
 ├── aws/         # VPC, EKS per env (workspaces: stg | prd)
-└── addons/      # ALB controller + metrics-server + External Secrets (per env)
+└── addons/      # ALB controller + metrics-server + External Secrets + kube-prometheus-stack (per env)
 ```
 
 ## Deploy — driven from GitHub Actions
@@ -79,6 +79,36 @@ runs in a degraded mode, auto-detected at runtime from
 provider, deploy/terraform roles or IRSA are created — so the ALB Controller
 and External Secrets add-ons are skipped). Override with the `AWS_AUTH_MODE`,
 `MANAGE_IAM`, `EXECUTION_ROLE_ARN` repo variables if needed.
+
+## Observability — CPU/memory metrics & dashboards
+
+The `addons` state installs
+[kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack)
+(Prometheus + Grafana + node-exporter + kube-state-metrics) into the
+`monitoring` namespace. It needs no AWS permissions, so it runs the same way
+on Learner Lab accounts. Persistence is disabled (no EBS CSI driver is
+installed here) — Prometheus keeps 6h of retention in-memory/ephemeral
+storage, enough for live dashboards, not for long-term history.
+
+Node/pod CPU and memory come from node-exporter + kube-state-metrics, and
+Grafana ships with the chart's default dashboards already provisioned — no
+manual dashboard building needed, e.g. **Kubernetes / Compute Resources /
+Cluster** and **Node Exporter / Nodes** cover cluster- and node-level CPU out
+of the box.
+
+**Access Grafana** (no Ingress/ALB is exposed for it, same restricted-account
+reasoning as the app — see below):
+```bash
+kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80
+# http://localhost:3000 — user: admin
+terraform -chdir=terraform/addons output -raw grafana_admin_password
+```
+
+Control-plane component scraping (`kubeControllerManager`/`kubeScheduler`/
+`kubeEtcd`/`kubeProxy`) and Alertmanager are disabled: on managed EKS the
+control-plane endpoints aren't reachable, and alerting wasn't part of this
+requirement — both can be turned back on later in `terraform/addons/helm.tf`
+if the team wants them.
 
 ## Local development
 
