@@ -38,12 +38,19 @@ resource "aws_apigatewayv2_route" "customer_login" {
 # API Gateway needs explicit permission to invoke the lambda — a
 # resource-based policy on the function, not an IAM role, so this works
 # under Learner Lab's manage_iam=false restriction with no changes needed.
+#
+# Wildcarded (stage/*, method+path/*) rather than hand-formatting the exact
+# "METHOD/path" ARN suffix: route_key's "POST /auth/customer-login" syntax
+# uses a space, but the execute-api ARN format needs a "/" separator - got
+# this wrong once already (silent permission mismatch -> generic 500 from
+# the Gateway, not from the lambda's own error handling). This Lambda has
+# exactly one gateway in front of it, so scoping tighter buys nothing.
 resource "aws_lambda_permission" "apigw_invoke_login" {
   statement_id  = "AllowAPIGatewayInvokeCustomerLogin"
   action        = "lambda:InvokeFunction"
   function_name = data.terraform_remote_state.lambda.outputs.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/${local.auth_route_key}"
+  source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*"
 }
 
 # --- Route 2: everything else -> the app's public LoadBalancer ---
