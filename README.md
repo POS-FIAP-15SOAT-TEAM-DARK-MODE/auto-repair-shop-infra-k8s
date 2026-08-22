@@ -88,6 +88,11 @@ proxies straight through to the app. Re-running `apply` after any app
 redeploy picks up a new ELB hostname automatically, next time the SSM
 parameter changes.
 
+> **Last tested live endpoint** (`stg`, AWS Academy Learner Lab — tears
+> down when the Lab session ends, so treat this as a point-in-time
+> reference, not a standing URL):
+> `https://f3ssj59u99.execute-api.us-east-1.amazonaws.com/stg`
+
 PRs touching `terraform/**` get an automatic `fmt` + `validate` (no
 credentials required).
 
