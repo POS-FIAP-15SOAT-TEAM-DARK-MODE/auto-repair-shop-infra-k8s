@@ -21,7 +21,7 @@ with their own CI/CD.
   External Secrets Operator
 - GitHub Actions (OIDC — no long-lived AWS keys after bootstrap)
 
-## Structure — 4 independent Terraform states
+## Structure — 5 independent Terraform states
 
 | State | Provisions | Cadence |
 |---|---|---|
@@ -29,13 +29,15 @@ with their own CI/CD.
 | `terraform/shared/` | ECR (app image repo) · GitHub OIDC provider · IAM roles (`deploy-stg/prd`, `terraform`) | run once |
 | `terraform/aws/` | VPC · EKS (per Terraform workspace `stg`/`prd`) | per environment |
 | `terraform/addons/` | Helm add-ons: ALB Controller · metrics-server · External Secrets (+ IRSA) | per environment |
+| `terraform/gateway/` | AWS API Gateway (HTTP API): routes `/auth/customer-login` to the lambda in `auto-repair-shop-lambda-auth`, everything else to the app | per environment |
 
 ```
 terraform/
 ├── bootstrap/   # S3 state bucket (run once)
 ├── shared/      # ECR + GitHub OIDC + IAM roles (run once)
 ├── aws/         # VPC, EKS per env (workspaces: stg | prd)
-└── addons/      # ALB controller + metrics-server + External Secrets (per env)
+├── addons/      # ALB controller + metrics-server + External Secrets (per env)
+└── gateway/     # API Gateway: routes to the lambda + the app (per env)
 ```
 
 ## Deploy — driven from GitHub Actions
@@ -66,6 +68,22 @@ Actions via OIDC (or static keys only for the one-time bootstrap step).
 `auto-repair-shop` app repo's `EKS_CLUSTER_NAME` GitHub Environment variable
 (STG/PRD), and share the same value with `auto-repair-shop-infra-db` if it
 needs it.
+
+**Provision the API Gateway** (`gateway` layer, after the app itself has
+been deployed at least once — see below for why):
+1. Deploy `auto-repair-shop-lambda-auth` first (its `function_arn` is read
+   here via `terraform_remote_state`).
+2. Deploy the app (`auto-repair-shop`'s `Docker` workflow) and grab its
+   public LoadBalancer hostname from that run's "App is up" summary (or
+   `kubectl get svc -n auto-repair-shop auto-repair-shop`).
+3. Set repo variable `APP_BACKEND_HOST` to that hostname (Settings →
+   Secrets and variables → Actions → Variables — this is not a secret, but
+   it does change if the Service is ever recreated, so re-set it after any
+   redeploy that gets a new ELB).
+4. Run **Infra (Terraform)** with `layer=gateway`, `environment=stg`,
+   `action=apply`. Output `api_endpoint` is the public base URL —
+   `POST {api_endpoint}/auth/customer-login` for a token, everything else
+   proxies straight through to the app.
 
 PRs touching `terraform/**` get an automatic `fmt` + `validate` (no
 credentials required).
@@ -100,21 +118,24 @@ of its own.
 
 ```mermaid
 flowchart TB
+    client([HTTP client])
     gha["GitHub Actions (this repo)"]
 
     subgraph aws["AWS account"]
         iam["IAM roles"]
         ecr["ECR<br/>app images"]
+        gw["API Gateway (HTTP API)<br/>terraform/gateway"]
+        lambda["customer-login lambda<br/>(auto-repair-shop-lambda-auth)"]
 
         subgraph vpc["VPC"]
             subgraph pub["public subnets"]
                 igw["IGW / NAT"]
-                alb["ALB (public)"]
+                elb["public ELB<br/>(app's LoadBalancer Service)"]
             end
             subgraph priv["private subnets"]
                 eks["EKS managed node group<br/>app pods"]
             end
-            alb --> eks
+            elb --> eks
         end
 
         ecr -.image pull.-> eks
@@ -123,10 +144,16 @@ flowchart TB
     rds[("RDS PostgreSQL<br/>provisioned by auto-repair-shop-infra-db<br/>in the same VPC")]
     eks -->|":5432 · SG: EKS nodes only"| rds
 
+    client -->|"POST /auth/customer-login"| gw
+    client -->|"everything else"| gw
+    gw -->|"AWS_PROXY integration"| lambda
+    gw -->|"HTTP_PROXY integration<br/>(public ELB, no VPC Link)"| elb
+
     gha -->|"OIDC (no static keys)"| iam
 ```
 
 ## Related repositories
 
-- [auto-repair-shop](https://github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop) — the application deployed onto this cluster
+- [auto-repair-shop](https://github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop) — the application deployed onto this cluster; the `gateway` state proxies to its public LoadBalancer
 - [auto-repair-shop-infra-db](https://github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop-infra-db) — managed PostgreSQL, reads this repo's network outputs
+- [auto-repair-shop-lambda-auth](https://github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop-lambda-auth) — the customer-login lambda; the `gateway` state reads its `function_arn` and routes `/auth/customer-login` to it
