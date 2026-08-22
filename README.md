@@ -4,8 +4,8 @@ Terraform for the Kubernetes cluster (AWS EKS) that runs the
 [auto-repair-shop](https://github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop)
 application, plus the shared bootstrap (remote state bucket, ECR, GitHub OIDC)
 and cluster add-ons. This repository was split out of the app's monorepo as
-part of the Fase 3 (Tech Challenge) requirement for 4 independent repositories
-with their own CI/CD.
+part of a move to independently deployable services, each with its own
+CI/CD.
 
 > Managed database (RDS) lives in the sibling
 > [auto-repair-shop-infra-db](https://github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop-infra-db)

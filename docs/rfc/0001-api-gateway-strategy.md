@@ -3,7 +3,7 @@
 - Status: Resolved (see Decision)
 - Date: 2026-08-22
 - Author: Giusier F.
-- Related: Fase 3 issue #5, ADR 0002 (this repo)
+- Related: issue #5, ADR 0002 (this repo)
 
 ## Summary
 
@@ -51,8 +51,8 @@ Run the gateway as another workload in the cluster, instead of a managed AWS ser
 
 Defense-in-depth: check the JWT at the edge *and* in the app.
 
-- **For:** rejects unauthenticated requests one hop earlier; matches issue #5's literal "401 no Gateway para rota protegida sem token" acceptance criterion at the Gateway layer specifically, not just observed as a pass-through from the app.
-- **Against:** duplicates JWT-checking logic (claims shape, secret, expiry handling) in two independently-deployed places that must stay in sync. No realistic threat model in this project that app-only validation doesn't already cover — the "401 without a token" criterion is satisfied either way, since the app already returns 401 correctly and the Gateway just proxies that response through unchanged.
+- **For:** rejects unauthenticated requests one hop earlier — a protected route hit with no token would 401 at the Gateway layer itself, not just observed as a pass-through from the app.
+- **Against:** duplicates JWT-checking logic (claims shape, secret, expiry handling) in two independently-deployed places that must stay in sync. No realistic threat model in this project that app-only validation doesn't already cover — a request with no token still ends up 401 either way, since the app already returns that correctly and the Gateway just proxies the response through unchanged.
 - **Verdict:** rejected for now; the Notes below flag when this should be revisited.
 
 ## Open questions / risks

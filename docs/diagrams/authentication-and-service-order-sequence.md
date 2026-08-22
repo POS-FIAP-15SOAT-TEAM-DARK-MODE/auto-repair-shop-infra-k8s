@@ -1,8 +1,8 @@
 # Sequence diagrams: authentication + service order
 
-Required by the Tech Challenge brief as a distinct artifact from the
-component diagrams already in each repo's README (`## Architecture`) —
-those show *topology*, these show *the order things happen in*.
+A distinct artifact from the component diagrams already in each repo's
+README (`## Architecture`) — those show *topology*, these show *the order
+things happen in*.
 
 Two flows, and they're deliberately connected: the second diagram reuses
 the token issued by the first, at the `accept`/`reject` step, to show

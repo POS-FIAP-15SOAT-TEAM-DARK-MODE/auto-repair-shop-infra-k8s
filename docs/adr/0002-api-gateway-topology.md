@@ -4,7 +4,7 @@
 - Date: 2026-08-22
 - Deciders: Giusier F.
 - Tags: api-gateway, security, jwt, infra
-- Related: Fase 3 issue #5
+- Related: issue #5
 
 ## Context
 
