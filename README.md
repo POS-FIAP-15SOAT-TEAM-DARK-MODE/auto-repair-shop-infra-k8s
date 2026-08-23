@@ -96,14 +96,17 @@ manual dashboard building needed, e.g. **Kubernetes / Compute Resources /
 Cluster** and **Node Exporter / Nodes** cover cluster- and node-level CPU out
 of the box.
 
-**Access Grafana** (no Ingress/ALB is exposed for it, same restricted-account
-reasoning as the app — see below):
+**Access Grafana** — exposed via a plain `LoadBalancer` Service (same
+mechanism the app uses in Lab mode, no ALB Controller/IRSA needed), so it has
+a real URL instead of requiring `kubectl port-forward`:
 ```bash
-kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80
-# http://localhost:3000 — admin / admin
+kubectl -n monitoring get svc kube-prometheus-stack-grafana \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 ```
-Fixed `admin`/`admin` login for now (see `terraform/addons/helm.tf`) — swap
-for a generated secret before Grafana is exposed beyond `port-forward`.
+Open that hostname in a browser — login `admin` / `admin`. This fixed login
+and public exposure are only acceptable because this is a short-lived Lab
+environment for study purposes — swap for a generated secret + restricted
+access before any longer-lived deployment.
 
 Control-plane component scraping (`kubeControllerManager`/`kubeScheduler`/
 `kubeEtcd`/`kubeProxy`) and Alertmanager are disabled: on managed EKS the

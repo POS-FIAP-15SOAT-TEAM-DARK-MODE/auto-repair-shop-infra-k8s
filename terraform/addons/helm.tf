@@ -74,6 +74,13 @@ resource "helm_release" "external_secrets" {
 # runs the same way on restricted (Learner Lab) accounts. Persistence is
 # disabled: there is no EBS CSI driver installed here, and Prometheus data
 # does not need to survive a pod restart for this use case.
+#
+# Grafana is exposed via a plain LoadBalancer Service (same mechanism the app
+# already uses in Lab mode, no ALB Controller/IRSA needed) so it has a real
+# URL instead of requiring kubectl port-forward. Login stays admin/admin —
+# acceptable only because this is a short-lived Lab environment for study
+# purposes; swap for a generated secret + restricted access before any
+# longer-lived deployment.
 resource "helm_release" "kube_prometheus_stack" {
   name             = "kube-prometheus-stack"
   repository       = "https://prometheus-community.github.io/helm-charts"
@@ -93,12 +100,11 @@ resource "helm_release" "kube_prometheus_stack" {
       }
     }
     grafana = {
-      # Simple fixed admin/admin login for now — rotate to a generated
-      # secret before this is exposed beyond port-forward.
       adminUser     = "admin"
       adminPassword = "admin"
       persistence   = { enabled = false }
       resources     = { requests = { cpu = "50m", memory = "128Mi" } }
+      service       = { type = "LoadBalancer" }
     }
     kubeControllerManager = { enabled = false }
     kubeScheduler         = { enabled = false }
