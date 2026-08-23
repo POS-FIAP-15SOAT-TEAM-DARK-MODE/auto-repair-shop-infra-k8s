@@ -133,6 +133,24 @@ control-plane endpoints aren't reachable, and alerting wasn't part of this
 requirement — both can be turned back on later in `terraform/addons/helm.tf`
 if the team wants them.
 
+## Tear down
+
+Run the **Infra (Terraform)** workflow with `action=destroy`, in this order:
+`addons` → `aws` (leave `shared`/`bootstrap` alone — they hold the state
+bucket, ECR and IAM roles meant to be reused across environment
+recreations).
+
+The `addons` state includes a destroy-time cleanup
+(`terraform/addons/cleanup.tf`) that deletes every `LoadBalancer`-type
+Kubernetes Service in the cluster — **including ones this state doesn't
+manage**, like the app's own Service (created by `kubectl apply` in
+`auto-repair-shop`'s `docker.yml`, entirely outside any Terraform state).
+Without this, that Service's backing AWS ELB is invisible to Terraform, and
+destroying the `aws` layer's VPC hangs forever on
+`aws_subnet`/`aws_internet_gateway`: "Still destroying..." — AWS refuses to
+delete a subnet or IGW with an ENI still attached to it. Always destroy
+`addons` (and let this cleanup run) **before** `aws`.
+
 ## Local development
 
 There is no local/Kind path in this repository — the Kind-based full local
