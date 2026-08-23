@@ -100,9 +100,10 @@ of the box.
 reasoning as the app — see below):
 ```bash
 kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80
-# http://localhost:3000 — user: admin
-terraform -chdir=terraform/addons output -raw grafana_admin_password
+# http://localhost:3000 — admin / admin
 ```
+Fixed `admin`/`admin` login for now (see `terraform/addons/helm.tf`) — swap
+for a generated secret before Grafana is exposed beyond `port-forward`.
 
 Control-plane component scraping (`kubeControllerManager`/`kubeScheduler`/
 `kubeEtcd`/`kubeProxy`) and Alertmanager are disabled: on managed EKS the
