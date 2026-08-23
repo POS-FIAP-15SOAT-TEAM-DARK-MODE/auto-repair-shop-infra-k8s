@@ -1,0 +1,109 @@
+{
+  "title": "Auto Repair Shop — App Metrics",
+  "uid": "auto-repair-shop-app",
+  "tags": ["auto-repair-shop", "app"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "title": "API", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 100, "collapsed": false, "panels": [] },
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Request rate by route",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum by (route, method) (rate(http_request_duration_seconds_count[5m]))",
+          "legendFormat": "{{method}} {{route}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Latency p95 by route",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{route}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "5xx error rate (5m)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 9 },
+      "targets": [
+        { "expr": "sum(rate(http_request_duration_seconds_count{status=~\"5..\"}[5m]))" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0.01 }] } }, "overrides": [] }
+    },
+    { "type": "row", "title": "Service Orders", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 }, "id": 200, "collapsed": false, "panels": [] },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Service orders created (24h)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 14 },
+      "targets": [
+        { "expr": "increase(service_orders_created_total[24h])" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Notification failures (24h)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 14 },
+      "targets": [
+        { "expr": "increase(service_order_notification_failures_total[24h])" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] }
+    },
+    {
+      "id": 6,
+      "type": "bargauge",
+      "title": "Status transitions by status (24h) — volume",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 14 },
+      "targets": [
+        { "expr": "sum by (status) (increase(service_order_status_transitions_total[24h]))", "legendFormat": "{{status}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "orientation": "horizontal", "displayMode": "gradient" }
+    },
+    {
+      "id": 7,
+      "type": "bargauge",
+      "title": "Average time to reach each status (hours)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 19 },
+      "targets": [
+        { "expr": "service_order_status_avg_duration_hours", "legendFormat": "{{status}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "h" }, "overrides": [] },
+      "options": { "orientation": "horizontal", "displayMode": "gradient" }
+    }
+  ]
+}

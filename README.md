@@ -114,6 +114,13 @@ is configured to pick up *any* ServiceMonitor in the cluster
 (`serviceMonitorSelectorNilUsesHelmValues = false`), so no extra wiring is
 needed on this side once the app is deployed.
 
+A dashboard for those metrics — **"Auto Repair Shop — App Metrics"** —
+is provisioned automatically (`terraform/addons/dashboards.tf` +
+`dashboards/app-metrics.json`, loaded via a labeled ConfigMap, same mechanism
+as the chart's built-in dashboards): request rate/latency by route, 5xx rate,
+service orders created, notification failures, status-transition volume and
+average time to reach each status.
+
 **Logs**: `loki-stack` (Loki + Promtail) is also installed into `monitoring`
 and wired as a Loki datasource on the same Grafana — use the **Explore** tab
 to query container logs (filter by `request_id` to follow one request across
