@@ -97,6 +97,12 @@ resource "helm_release" "kube_prometheus_stack" {
       prometheusSpec = {
         retention = "6h"
         resources = { requests = { cpu = "100m", memory = "256Mi" } }
+        # Nil-selector defaults to "only ServiceMonitors labeled release=<this
+        # helm release>". Disabled so Prometheus picks up any ServiceMonitor
+        # in the cluster (e.g. the app repo's, which doesn't know this
+        # release's name) without extra label wiring.
+        serviceMonitorSelectorNilUsesHelmValues = false
+        podMonitorSelectorNilUsesHelmValues     = false
       }
     }
     grafana = {
@@ -105,10 +111,43 @@ resource "helm_release" "kube_prometheus_stack" {
       persistence   = { enabled = false }
       resources     = { requests = { cpu = "50m", memory = "128Mi" } }
       service       = { type = "LoadBalancer" }
+      # Points at the loki-stack release below (same namespace, so the short
+      # service name resolves) for the Explore/logs view.
+      additionalDataSources = [{
+        name   = "Loki"
+        type   = "loki"
+        url    = "http://loki-stack:3100"
+        access = "proxy"
+      }]
     }
     kubeControllerManager = { enabled = false }
     kubeScheduler         = { enabled = false }
     kubeEtcd              = { enabled = false }
     kubeProxy             = { enabled = false }
+  })]
+}
+
+# loki-stack — Loki (log storage) + Promtail (DaemonSet shipping container
+# stdout from every node). Gives the structured JSON logs (already emitted by
+# the app, request_id and all) a queryable home in Grafana's Explore view,
+# instead of only kubectl logs. Filesystem storage, no persistence: logs
+# don't need to survive a pod restart in this short-lived Lab environment.
+resource "helm_release" "loki_stack" {
+  name             = "loki-stack"
+  repository       = "https://grafana.github.io/helm-charts"
+  chart            = "loki-stack"
+  namespace        = "monitoring"
+  create_namespace = true
+
+  values = [yamlencode({
+    loki = {
+      persistence = { enabled = false }
+      resources   = { requests = { cpu = "50m", memory = "128Mi" } }
+    }
+    promtail = {
+      resources = { requests = { cpu = "50m", memory = "64Mi" } }
+    }
+    # Grafana already installed by kube-prometheus-stack above.
+    grafana = { enabled = false }
   })]
 }

@@ -108,6 +108,18 @@ and public exposure are only acceptable because this is a short-lived Lab
 environment for study purposes — swap for a generated secret + restricted
 access before any longer-lived deployment.
 
+**Application metrics**: the `auto-repair-shop` app repo ships a `/metrics`
+endpoint and a `ServiceMonitor` in its `k8s/manifests/base`. Prometheus here
+is configured to pick up *any* ServiceMonitor in the cluster
+(`serviceMonitorSelectorNilUsesHelmValues = false`), so no extra wiring is
+needed on this side once the app is deployed.
+
+**Logs**: `loki-stack` (Loki + Promtail) is also installed into `monitoring`
+and wired as a Loki datasource on the same Grafana — use the **Explore** tab
+to query container logs (filter by `request_id` to follow one request across
+the app's structured JSON logs). No persistence, same short-lived-Lab
+reasoning as everything else here.
+
 Control-plane component scraping (`kubeControllerManager`/`kubeScheduler`/
 `kubeEtcd`/`kubeProxy`) and Alertmanager are disabled: on managed EKS the
 control-plane endpoints aren't reachable, and alerting wasn't part of this
