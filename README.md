@@ -106,6 +106,53 @@ provider, deploy/terraform roles or IRSA are created — so the ALB Controller
 and External Secrets add-ons are skipped). Override with the `AWS_AUTH_MODE`,
 `MANAGE_IAM`, `EXECUTION_ROLE_ARN` repo variables if needed.
 
+## Step-by-step walkthrough (AWS Academy Learner Lab)
+
+A concrete, click-by-click version of the "Deploy" section above, for anyone
+running this on a Learner Lab account for the first time.
+
+1. **Get Lab credentials.** In your AWS Academy course, open the Learner Lab,
+   click **Start Lab**, wait for the status dot to turn green, then click
+   **AWS Details → AWS CLI: Show**. Copy the three values
+   (`aws_access_key_id`, `aws_secret_access_key`, `aws_session_token`).
+   These expire when the lab session ends or times out — re-fetch them any
+   time a workflow run fails on an auth step.
+
+2. **Add them as repo secrets**, not variables (repo-level, not an
+   environment): this repo → **Settings → Secrets and variables → Actions →
+   Secrets → New repository secret**, three times:
+   `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`.
+
+3. **Run bootstrap.** Actions tab → **"Infra bootstrap (one-time)"** → Run
+   workflow (branch: this feature branch, until merged) → Run workflow. This
+   creates the state bucket and, since Learner Lab forbids IAM/OIDC writes,
+   `shared` auto-runs in degraded mode: only the ECR repo gets created (no
+   `terraform_role_arn`, so skip the `infra` Environment/`AWS_TERRAFORM_ROLE_ARN`
+   setup entirely — every later apply just reuses the same static secrets).
+
+4. **Provision the cluster.** Actions tab → **"Infra (Terraform)"** → Run
+   workflow → `layer=aws`, `environment=stg`, `action=plan` first to sanity
+   check, then re-run with `action=apply`. Takes ~10-15 minutes (EKS control
+   plane + node group). This same run auto-chains into applying `addons`
+   afterward — expect the IRSA-dependent pieces (ALB Controller, External
+   Secrets) to be skipped/degraded, since there's no OIDC provider in Lab mode.
+
+5. **Grab the output.** Expand the "Show outputs" step, copy `cluster_name`
+   (e.g. `auto-repair-shop-stg-eks`) — you'll need it in `auto-repair-shop-infra-db`
+   and in the app repo.
+
+6. Continue in `auto-repair-shop-infra-db`'s README for the database, then the
+   `auto-repair-shop` app repo's `Docker` workflow to actually ship the app.
+
+**Inspecting the live cluster from your machine** (optional, useful for
+debugging): install `awscli` + `kubectl` locally, `aws configure` with the
+same Lab triple, then:
+```bash
+aws eks update-kubeconfig --region us-east-1 --name auto-repair-shop-stg-eks
+kubectl -n auto-repair-shop get pods
+kubectl -n auto-repair-shop logs <pod-name>
+```
+
 ## Local development
 
 There is no local/Kind path in this repository — the Kind-based full local
@@ -163,6 +210,24 @@ flowchart TB
 Time-ordered view of the same system — the CPF login through the gateway
 and lambda, and how the resulting token gets used later at service-order
 approval: [docs/diagrams/authentication-and-service-order-sequence.md](docs/diagrams/authentication-and-service-order-sequence.md).
+
+## Known issue: seed race on first deploy
+
+On a fresh app deploy, the `auto-repair-shop` pod can boot and run its DB
+seed **before** the `db-migrate` Job has finished creating the schema
+(nothing here gates the app Deployment's startup on the migrate Job
+completing). The seed then fails with a Postgres `42P01` ("relation does not
+exist") error that's only logged, never retried — the pod keeps running with
+zero seed data. Symptom: seeded logins (`attendant@autorepairshop.com` etc.)
+return `401` even though the deploy looked fully green.
+
+**Workaround:** `kubectl -n auto-repair-shop rollout restart deployment/auto-repair-shop`
+once migrations have completed — the app re-seeds successfully on the next boot.
+
+**Real fix** (tracked as a follow-up, lives in the `auto-repair-shop` app
+repo): add an `initContainer` to the app Deployment that waits for the
+migrate Job to complete, or make `RunSeed`'s failure retry/crash-loop instead
+of silently discarding the error.
 
 ## Related repositories
 
