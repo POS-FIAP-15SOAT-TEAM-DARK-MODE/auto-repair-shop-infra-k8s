@@ -21,7 +21,7 @@ CI/CD.
   External Secrets Operator
 - GitHub Actions (OIDC — no long-lived AWS keys after bootstrap)
 
-## Structure — 4 independent Terraform states
+## Structure — 5 independent Terraform states
 
 | State | Provisions | Cadence |
 |---|---|---|
@@ -29,13 +29,15 @@ CI/CD.
 | `terraform/shared/` | ECR (app image repo) · GitHub OIDC provider · IAM roles (`deploy-stg/prd`, `terraform`) | run once |
 | `terraform/aws/` | VPC · EKS (per Terraform workspace `stg`/`prd`) | per environment |
 | `terraform/addons/` | Helm add-ons: ALB Controller · metrics-server · External Secrets (+ IRSA) | per environment |
+| `terraform/gateway/` | AWS API Gateway (HTTP API): routes `/auth/customer-login` to the lambda in `auto-repair-shop-lambda-auth`, everything else to the app | per environment |
 
 ```
 terraform/
 ├── bootstrap/   # S3 state bucket (run once)
 ├── shared/      # ECR + GitHub OIDC + IAM roles (run once)
 ├── aws/         # VPC, EKS per env (workspaces: stg | prd)
-└── addons/      # ALB controller + metrics-server + External Secrets (per env)
+├── addons/      # ALB controller + metrics-server + External Secrets (per env)
+└── gateway/     # API Gateway: routes to the lambda + the app (per env)
 ```
 
 ## Deploy — driven from GitHub Actions
@@ -66,6 +68,30 @@ Actions via OIDC (or static keys only for the one-time bootstrap step).
 `auto-repair-shop` app repo's `EKS_CLUSTER_NAME` GitHub Environment variable
 (STG/PRD), and share the same value with `auto-repair-shop-infra-db` if it
 needs it.
+
+**Provision the API Gateway** (`gateway` layer, after both of these have
+already run at least once):
+1. `auto-repair-shop-lambda-auth` deployed (its `function_arn` is read here
+   via `terraform_remote_state`).
+2. `auto-repair-shop`'s `Docker` workflow deployed the app at least once.
+   Its deploy job publishes the app's public LoadBalancer hostname to SSM
+   parameter `/auto-repair-shop/<env>/app-backend-host` as its last step —
+   this state reads that automatically via a data source, no manual
+   variable to set (the ELB itself is Kubernetes-created, not
+   Terraform-managed, so this SSM parameter is the handoff point between
+   the two control planes).
+
+Then run **Infra (Terraform)** with `layer=gateway`, `environment=stg`,
+`action=apply`. Output `api_endpoint` is the public base URL —
+`POST {api_endpoint}/auth/customer-login` for a token, everything else
+proxies straight through to the app. Re-running `apply` after any app
+redeploy picks up a new ELB hostname automatically, next time the SSM
+parameter changes.
+
+> **Last tested live endpoint** (`stg`, AWS Academy Learner Lab — tears
+> down when the Lab session ends, so treat this as a point-in-time
+> reference, not a standing URL):
+> `https://f3ssj59u99.execute-api.us-east-1.amazonaws.com/stg`
 
 PRs touching `terraform/**` get an automatic `fmt` + `validate` (no
 credentials required).
@@ -100,21 +126,24 @@ of its own.
 
 ```mermaid
 flowchart TB
+    client([HTTP client])
     gha["GitHub Actions (this repo)"]
 
     subgraph aws["AWS account"]
         iam["IAM roles"]
         ecr["ECR<br/>app images"]
+        gw["API Gateway (HTTP API)<br/>terraform/gateway"]
+        lambda["customer-login lambda<br/>(auto-repair-shop-lambda-auth)"]
 
         subgraph vpc["VPC"]
             subgraph pub["public subnets"]
                 igw["IGW / NAT"]
-                alb["ALB (public)"]
+                elb["public ELB<br/>(app's LoadBalancer Service)"]
             end
             subgraph priv["private subnets"]
                 eks["EKS managed node group<br/>app pods"]
             end
-            alb --> eks
+            elb --> eks
         end
 
         ecr -.image pull.-> eks
@@ -123,10 +152,20 @@ flowchart TB
     rds[("RDS PostgreSQL<br/>provisioned by auto-repair-shop-infra-db<br/>in the same VPC")]
     eks -->|":5432 · SG: EKS nodes only"| rds
 
+    client -->|"POST /auth/customer-login"| gw
+    client -->|"everything else"| gw
+    gw -->|"AWS_PROXY integration"| lambda
+    gw -->|"HTTP_PROXY integration<br/>(public ELB, no VPC Link)"| elb
+
     gha -->|"OIDC (no static keys)"| iam
 ```
 
+Time-ordered view of the same system — the CPF login through the gateway
+and lambda, and how the resulting token gets used later at service-order
+approval: [docs/diagrams/authentication-and-service-order-sequence.md](docs/diagrams/authentication-and-service-order-sequence.md).
+
 ## Related repositories
 
-- [auto-repair-shop](https://github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop) — the application deployed onto this cluster
+- [auto-repair-shop](https://github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop) — the application deployed onto this cluster; the `gateway` state proxies to its public LoadBalancer
 - [auto-repair-shop-infra-db](https://github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop-infra-db) — managed PostgreSQL, reads this repo's network outputs
+- [auto-repair-shop-lambda-auth](https://github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop-lambda-auth) — the customer-login lambda; the `gateway` state reads its `function_arn` and routes `/auth/customer-login` to it
