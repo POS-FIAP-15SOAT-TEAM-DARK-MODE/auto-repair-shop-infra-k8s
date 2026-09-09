@@ -10,5 +10,5 @@ crash.*.log
 # Editor/IDE
 .idea/
 .vscode/
-.cursor/
+.cursex
 .DS_Store

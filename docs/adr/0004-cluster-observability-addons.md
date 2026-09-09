@@ -1,4 +1,4 @@
-# ADR 0002 — Cluster observability add-ons: kube-prometheus-stack + loki-stack
+# ADR 0004 — Cluster observability add-ons: kube-prometheus-stack + loki-stack
 
 - Status: Accepted
 - Date: 2026-08-23
