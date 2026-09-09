@@ -282,23 +282,23 @@ Time-ordered view of the same system — the CPF login through the gateway
 and lambda, and how the resulting token gets used later at service-order
 approval: [docs/diagrams/authentication-and-service-order-sequence.md](docs/diagrams/authentication-and-service-order-sequence.md).
 
-## Known issue: seed race on first deploy
+## Fixed issue: seed race on first deploy
 
-On a fresh app deploy, the `auto-repair-shop` pod can boot and run its DB
-seed **before** the `db-migrate` Job has finished creating the schema
-(nothing here gates the app Deployment's startup on the migrate Job
-completing). The seed then fails with a Postgres `42P01` ("relation does not
-exist") error that's only logged, never retried — the pod keeps running with
-zero seed data. Symptom: seeded logins (`attendant@autorepairshop.com` etc.)
-return `401` even though the deploy looked fully green.
+On a fresh app deploy, the `auto-repair-shop` pod could boot and run its DB
+seed **before** the `db-migrate` Job had finished creating the schema
+(nothing gated the app Deployment's startup on the migrate Job completing).
+The seed then failed with a Postgres `42P01` ("relation does not exist")
+error that was only logged, never retried — the pod kept running with zero
+seed data. Symptom: seeded logins (`attendant@autorepairshop.com` etc.)
+returned `401` even though the deploy looked fully green.
 
-**Workaround:** `kubectl -n auto-repair-shop rollout restart deployment/auto-repair-shop`
-once migrations have completed — the app re-seeds successfully on the next boot.
-
-**Real fix** (tracked as a follow-up, lives in the `auto-repair-shop` app
-repo): add an `initContainer` to the app Deployment that waits for the
-migrate Job to complete, or make `RunSeed`'s failure retry/crash-loop instead
-of silently discarding the error.
+**Fixed** in `auto-repair-shop`
+([PR #335](https://github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop/pull/335)):
+a `wait-for-migrations` initContainer on the app Deployment now blocks on
+`kubectl wait --for=condition=complete job/db-migrate` before the `app`
+container starts, backed by a minimal Role (`get`/`list`/`watch` on
+`batch/jobs` only). No more manual `rollout restart` needed after a fresh
+deploy.
 
 ## Related repositories
 
