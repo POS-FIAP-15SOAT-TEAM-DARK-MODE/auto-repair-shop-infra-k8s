@@ -201,10 +201,34 @@ the app's structured JSON logs). No persistence, same short-lived-Lab
 reasoning as everything else here.
 
 Control-plane component scraping (`kubeControllerManager`/`kubeScheduler`/
-`kubeEtcd`/`kubeProxy`) and Alertmanager are disabled: on managed EKS the
-control-plane endpoints aren't reachable, and alerting wasn't part of this
-requirement — both can be turned back on later in `terraform/addons/helm.tf`
-if the team wants them.
+`kubeEtcd`/`kubeProxy`) is disabled: on managed EKS those control-plane
+endpoints aren't reachable, so leaving it on just produces permanently-failing
+scrape targets. Re-enabling it is a one-line flip in
+`terraform/addons/helm.tf` if the team ever moves off EKS.
+
+### Alerting — deliberately not implemented
+
+**Alertmanager is disabled** (`alertmanager.enabled = false` in
+`terraform/addons/helm.tf`, part of the same `kube-prometheus-stack`
+release). This is a **conscious scope cut for this submission, not an
+oversight or a missing feature**:
+
+- The tech challenge's "alertas para falhas no processamento de ordens de
+  serviço" requirement was descoped by the team (approved) in favor of
+  spending the available time on metrics + logs + dashboards, which cover
+  the requirement's other, higher-value asks (API latency, resource
+  consumption, structured/correlated logs, the three dashboard panels).
+- Nothing here needs a rework to add alerting later: Alertmanager is already
+  bundled in the same Helm release that's already installed — turning it on
+  is `alertmanager.enabled = true` (or removing the line) plus defining
+  alert rules (e.g. a `PrometheusRule` for a burst of
+  `service_order_notification_failures_total`, or Prometheus's own `up == 0`
+  for a dead app pod). No new infrastructure, no new Terraform state, no
+  new Helm release.
+- Until then, the closest thing to alerting here is manual: watch the
+  **"Notification failures (24h)"** stat panel on the "Auto Repair Shop —
+  App Metrics" dashboard, or the cluster/node dashboards' CPU/memory panels,
+  in Grafana directly.
 
 ## Tear down
 
