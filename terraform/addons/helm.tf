@@ -3,6 +3,7 @@ resource "helm_release" "metrics_server" {
   name       = "metrics-server"
   repository = "https://kubernetes-sigs.github.io/metrics-server/"
   chart      = "metrics-server"
+  version    = "3.14.0" # pinned to the version validated in this project's first successful deploy
   namespace  = "kube-system"
 
   set {
@@ -19,6 +20,7 @@ resource "helm_release" "alb" {
   name       = "aws-load-balancer-controller"
   repository = "https://aws.github.io/eks-charts"
   chart      = "aws-load-balancer-controller"
+  version    = "3.5.0" # pinned — not exercised on Learner Lab (manage_iam=false skips this), so an unpinned drift here would go unnoticed until run on a non-restricted account
   namespace  = "kube-system"
 
   set {
@@ -55,6 +57,7 @@ resource "helm_release" "external_secrets" {
   name             = "external-secrets"
   repository       = "https://charts.external-secrets.io"
   chart            = "external-secrets"
+  version          = "2.10.0" # pinned, same reasoning as the ALB controller above
   namespace        = "external-secrets"
   create_namespace = true
 
@@ -85,6 +88,7 @@ resource "helm_release" "kube_prometheus_stack" {
   name             = "kube-prometheus-stack"
   repository       = "https://prometheus-community.github.io/helm-charts"
   chart            = "kube-prometheus-stack"
+  version          = "90.0.0" # pinned: an unpinned chart silently moved forward between deploys and broke Grafana's datasource provisioning (see loki_stack below)
   namespace        = "monitoring"
   create_namespace = true
 
@@ -114,10 +118,11 @@ resource "helm_release" "kube_prometheus_stack" {
       # Points at the loki-stack release below (same namespace, so the short
       # service name resolves) for the Explore/logs view.
       additionalDataSources = [{
-        name   = "Loki"
-        type   = "loki"
-        url    = "http://loki-stack:3100"
-        access = "proxy"
+        name      = "Loki"
+        type      = "loki"
+        url       = "http://loki-stack:3100"
+        access    = "proxy"
+        isDefault = false # the chart's own Prometheus datasource is already the default; having two errors Grafana out ("Only one datasource per organization can be marked as default")
       }]
     }
     kubeControllerManager = { enabled = false }
@@ -136,6 +141,7 @@ resource "helm_release" "loki_stack" {
   name             = "loki-stack"
   repository       = "https://grafana.github.io/helm-charts"
   chart            = "loki-stack"
+  version          = "2.10.3" # pinned, see kube_prometheus_stack above
   namespace        = "monitoring"
   create_namespace = true
 
@@ -147,7 +153,16 @@ resource "helm_release" "loki_stack" {
     promtail = {
       resources = { requests = { cpu = "50m", memory = "64Mi" } }
     }
-    # Grafana already installed by kube-prometheus-stack above.
-    grafana = { enabled = false }
+    # Grafana already installed by kube-prometheus-stack above. `grafana.enabled
+    # = false` only skips installing this chart's OWN Grafana — it still
+    # creates its own "Loki" datasource ConfigMap (grafana.sidecar.datasources
+    # defaults to enabled regardless), which duplicated the one already added
+    # via kube-prometheus-stack's additionalDataSources above and both ended
+    # up isDefault, crashing Grafana ("Only one datasource per organization
+    # can be marked as default"). Disabled here since we wire Loki manually.
+    grafana = {
+      enabled = false
+      sidecar = { datasources = { enabled = false } }
+    }
   })]
 }
