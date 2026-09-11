@@ -114,10 +114,11 @@ resource "helm_release" "kube_prometheus_stack" {
       # Points at the loki-stack release below (same namespace, so the short
       # service name resolves) for the Explore/logs view.
       additionalDataSources = [{
-        name   = "Loki"
-        type   = "loki"
-        url    = "http://loki-stack:3100"
-        access = "proxy"
+        name      = "Loki"
+        type      = "loki"
+        url       = "http://loki-stack:3100"
+        access    = "proxy"
+        isDefault = false # the chart's own Prometheus datasource is already the default; having two errors Grafana out ("Only one datasource per organization can be marked as default")
       }]
     }
     kubeControllerManager = { enabled = false }
