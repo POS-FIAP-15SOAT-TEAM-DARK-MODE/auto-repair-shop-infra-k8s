@@ -76,7 +76,22 @@ data "aws_iam_policy_document" "deploy_permissions" {
     actions   = ["eks:DescribeCluster"]
     resources = ["*"]
   }
+
+  # Lets the app repo's deploy job publish its LoadBalancer hostname after
+  # each deploy, so auto-repair-shop-infra-k8s's gateway state can read it
+  # via a data source instead of a manually-set repo variable — the ELB
+  # itself is Kubernetes-created, not Terraform-managed, so this is the only
+  # stable handoff point between the two.
+  statement {
+    sid     = "PublishBackendHost"
+    actions = ["ssm:PutParameter"]
+    resources = [
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/*/app-backend-host"
+    ]
+  }
 }
+
+data "aws_caller_identity" "current" {}
 
 resource "aws_iam_role_policy" "deploy" {
   for_each = local.environments

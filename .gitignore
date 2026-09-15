@@ -6,3 +6,9 @@
 !terraform.tfvars.example
 crash.log
 crash.*.log
+
+# Editor/IDE
+.idea/
+.vscode/
+.cursex
+.DS_Store

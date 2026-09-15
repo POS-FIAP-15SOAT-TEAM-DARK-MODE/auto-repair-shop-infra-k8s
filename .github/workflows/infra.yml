@@ -10,7 +10,7 @@ on:
       layer:
         description: Which Terraform state to run
         type: choice
-        options: [shared, aws, addons]
+        options: [shared, aws, addons, gateway]
         default: aws
       environment:
         description: Workspace (ignored for `shared`)
@@ -44,7 +44,7 @@ jobs:
       - name: fmt & validate
         run: |
           terraform fmt -check -recursive terraform
-          for d in bootstrap shared aws addons; do
+          for d in bootstrap shared aws addons gateway; do
             echo "== $d =="
             terraform -chdir="terraform/$d" init -backend=false -input=false
             terraform -chdir="terraform/$d" validate
@@ -107,8 +107,9 @@ jobs:
           fi
           VARS=(-var "manage_iam=$MANAGE_IAM")
           case "${{ inputs.layer }}" in
-            aws)    VARS+=(-var "state_bucket=$STATE_BUCKET" -var "execution_role_arn=$EXECUTION_ROLE_ARN") ;;
-            addons) VARS+=(-var "state_bucket=$STATE_BUCKET") ;;
+            aws)     VARS+=(-var "state_bucket=$STATE_BUCKET" -var "execution_role_arn=$EXECUTION_ROLE_ARN") ;;
+            addons)  VARS+=(-var "state_bucket=$STATE_BUCKET") ;;
+            gateway) VARS+=(-var "state_bucket=$STATE_BUCKET") ;;
           esac
           terraform ${{ inputs.action }} ${{ (inputs.action == 'apply' || inputs.action == 'destroy') && '-auto-approve' || '' }} "${VARS[@]}"
 

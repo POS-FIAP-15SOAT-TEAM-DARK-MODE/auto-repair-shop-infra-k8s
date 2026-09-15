@@ -1,0 +1,7 @@
+region       = "us-east-1"
+project      = "auto-repair-shop"
+state_bucket = "auto-repair-shop-tfstate-<account_id>"
+
+# The app's public LoadBalancer hostname is read automatically from SSM
+# parameter /auto-repair-shop/<env>/app-backend-host, published by
+# auto-repair-shop's docker.yml on every deploy — nothing to set here.
