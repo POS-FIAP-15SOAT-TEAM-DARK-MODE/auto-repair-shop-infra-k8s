@@ -86,7 +86,10 @@ jobs:
       - name: Apply messaging against MiniStack
         working-directory: terraform/messaging
         run: |
-          terraform init -backend=false -input=false
+          # The committed backend is S3 (partial config). Replace it with local
+          # state for this job only; the override file is not committed.
+          printf 'terraform {\n  backend "local" {}\n}\n' > backend_override.tf
+          terraform init -input=false
           terraform apply -auto-approve -input=false \
             -var "aws_endpoint=$ENDPOINT" \
             -var "manage_iam=false" \
