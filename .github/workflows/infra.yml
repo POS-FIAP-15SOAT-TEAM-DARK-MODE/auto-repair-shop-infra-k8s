@@ -10,7 +10,7 @@ on:
       layer:
         description: Which Terraform state to run
         type: choice
-        options: [shared, aws, addons, gateway]
+        options: [shared, aws, addons, gateway, messaging]
         default: aws
       environment:
         description: Workspace (ignored for `shared`)
@@ -44,10 +44,83 @@ jobs:
       - name: fmt & validate
         run: |
           terraform fmt -check -recursive terraform
-          for d in bootstrap shared aws addons gateway; do
+          for d in bootstrap shared aws addons gateway messaging; do
             echo "== $d =="
             terraform -chdir="terraform/$d" init -backend=false -input=false
             terraform -chdir="terraform/$d" validate
+          done
+
+  # On PRs: apply the messaging layer to a MiniStack (SNS/SQS emulator) with
+  # dummy credentials and check the topology. No AWS account is touched.
+  messaging-ministack:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    services:
+      ministack:
+        image: ministackorg/ministack
+        ports:
+          - 4566:4566
+    env:
+      ENDPOINT: http://localhost:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_wrapper: false
+
+      - name: Wait for MiniStack
+        run: |
+          for i in $(seq 1 30); do
+            if aws --endpoint-url "$ENDPOINT" sns list-topics >/dev/null 2>&1; then
+              echo "MiniStack is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "MiniStack did not become ready" >&2
+          exit 1
+
+      - name: Apply messaging against MiniStack
+        working-directory: terraform/messaging
+        run: |
+          terraform init -backend=false -input=false
+          terraform apply -auto-approve -input=false \
+            -var "aws_endpoint=$ENDPOINT" \
+            -var "manage_iam=false" \
+            -var "state_bucket=ministack"
+
+      - name: Check topology (4 topics, 10 queues, 8 subscriptions)
+        run: |
+          set -euo pipefail
+          check() { # name actual expected
+            if [ "$2" != "$3" ]; then
+              echo "FAIL $1: expected $3, got $2" >&2
+              exit 1
+            fi
+            echo "OK   $1: $2"
+          }
+          aws_local() { aws --endpoint-url "$ENDPOINT" "$@"; }
+
+          topics=$(aws_local sns list-topics --output json \
+            | jq '[.Topics[].TopicArn | select(contains(":auto-repair-shop-stg-"))] | length')
+          check "SNS topics" "$topics" 4
+
+          queues=$(aws_local sqs list-queues --queue-name-prefix auto-repair-shop-stg- --output json \
+            | jq '(.QueueUrls // []) | length')
+          check "SQS queues (incl. DLQs)" "$queues" 10
+
+          subs=$(aws_local sns list-subscriptions --output json \
+            | jq '[.Subscriptions[] | select(.TopicArn | contains(":auto-repair-shop-stg-")) | select(.Protocol == "sqs")] | length')
+          check "SNS subscriptions (sqs)" "$subs" 8
+
+          for pair in "saga-commands 3" "so-events 1" "billing-events 2" "execution-events 2"; do
+            topic=${pair% *}; expected=${pair#* }
+            n=$(aws_local sns list-subscriptions --output json \
+              | jq --arg t "auto-repair-shop-stg-$topic" '[.Subscriptions[] | select(.TopicArn | endswith(":" + $t)) | select(.Protocol == "sqs")] | length')
+            check "subscriptions on $topic" "$n" "$expected"
           done
 
   run:
@@ -110,6 +183,7 @@ jobs:
             aws)     VARS+=(-var "state_bucket=$STATE_BUCKET" -var "execution_role_arn=$EXECUTION_ROLE_ARN") ;;
             addons)  VARS+=(-var "state_bucket=$STATE_BUCKET") ;;
             gateway) VARS+=(-var "state_bucket=$STATE_BUCKET") ;;
+            messaging) VARS+=(-var "state_bucket=$STATE_BUCKET") ;;
           esac
           terraform ${{ inputs.action }} ${{ (inputs.action == 'apply' || inputs.action == 'destroy') && '-auto-approve' || '' }} "${VARS[@]}"
 
