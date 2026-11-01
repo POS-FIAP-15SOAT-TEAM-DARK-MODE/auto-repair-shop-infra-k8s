@@ -8,6 +8,19 @@ variable "project" {
   default = "auto-repair-shop"
 }
 
+variable "service_repositories" {
+  description = "ECR repositories for the microservices, one per service (the gateway keeps its own aws_ecr_repository.app)"
+  type        = list(string)
+  default = [
+    "auto-repair-shop-customer-service",
+    "auto-repair-shop-catalog-service",
+    "auto-repair-shop-billing-service",
+    "auto-repair-shop-execution-service",
+    "auto-repair-shop-history-service",
+    "auto-repair-shop-service-order-service",
+  ]
+}
+
 variable "github_repo" {
   description = "owner/repo allowed to assume the deploy roles via OIDC"
   type        = string

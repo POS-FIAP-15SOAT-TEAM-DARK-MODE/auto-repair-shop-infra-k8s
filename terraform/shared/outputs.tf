@@ -16,3 +16,8 @@ output "terraform_role_arn" {
   description = "Role the Infra workflow assumes (set as the `infra` env var AWS_TERRAFORM_ROLE_ARN). Null when manage_iam = false."
   value       = one(aws_iam_role.terraform[*].arn)
 }
+
+output "service_repository_urls" {
+  description = "Map of microservice repository name -> ECR repository URL (push target for each service's CI)"
+  value       = { for name, r in aws_ecr_repository.services : name => r.repository_url }
+}
