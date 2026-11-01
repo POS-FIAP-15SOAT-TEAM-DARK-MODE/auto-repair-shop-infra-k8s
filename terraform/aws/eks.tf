@@ -78,6 +78,11 @@ resource "aws_launch_template" "lab_nodes" {
     http_put_response_hop_limit = 2
   }
 
+  # Nodes live in private subnets; never give them a public IP.
+  network_interfaces {
+    associate_public_ip_address = false
+  }
+
   tags = local.tags
 }
 

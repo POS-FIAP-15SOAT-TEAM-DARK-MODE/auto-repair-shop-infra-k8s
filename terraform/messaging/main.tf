@@ -4,7 +4,9 @@ resource "aws_sns_topic" "this" {
   for_each = local.topics
 
   name = "${local.prefix}${each.key}"
-  tags = local.tags
+  # AWS-managed key: encrypts topics at rest without a customer key to manage.
+  kms_master_key_id = "alias/aws/sns"
+  tags              = local.tags
 }
 
 # --- Queues (SQS, Standard) and their dead-letter queues ----------------------
