@@ -78,11 +78,10 @@ resource "aws_launch_template" "lab_nodes" {
     http_put_response_hop_limit = 2
   }
 
-  # Nodes live in private subnets; never give them a public IP.
-  network_interfaces {
-    associate_public_ip_address = false
-  }
-
+  # Deliberately no `network_interfaces` block here: on an EKS managed node
+  # group, a custom network interface in the launch template drops the security
+  # groups EKS attaches automatically, so nodes may fail to join. Nodes already
+  # get no public IP because they live in the private subnets.
   tags = local.tags
 }
 

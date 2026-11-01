@@ -4,9 +4,10 @@ resource "aws_sns_topic" "this" {
   for_each = local.topics
 
   name = "${local.prefix}${each.key}"
-  # AWS-managed key: encrypts topics at rest without a customer key to manage.
-  kms_master_key_id = "alias/aws/sns"
-  tags              = local.tags
+  # No SSE on purpose: publishers authenticate with the Learner Lab role, which
+  # may lack KMS permissions, and Publish would then fail with AccessDenied.
+  # Revisit with a customer-managed key when the account allows IAM/KMS.
+  tags = local.tags
 }
 
 # --- Queues (SQS, Standard) and their dead-letter queues ----------------------
