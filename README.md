@@ -21,24 +21,63 @@ CI/CD.
   External Secrets Operator, kube-prometheus-stack (Prometheus + Grafana)
 - GitHub Actions (OIDC — no long-lived AWS keys after bootstrap)
 
-## Structure — 5 independent Terraform states
+## Structure — 6 independent Terraform states
 
 | State | Provisions | Cadence |
 |---|---|---|
 | `terraform/bootstrap/` | S3 bucket for remote tfstate (versioned, encrypted, native locking) — shared with `auto-repair-shop-infra-db` | run once |
-| `terraform/shared/` | ECR (app image repo) · GitHub OIDC provider · IAM roles (`deploy-stg/prd`, `terraform`) | run once |
+| `terraform/shared/` | ECR (gateway image repo + one repo per microservice) · GitHub OIDC provider · IAM roles (`deploy-stg/prd`, `terraform`) | run once |
 | `terraform/aws/` | VPC · EKS (per Terraform workspace `stg`/`prd`) | per environment |
 | `terraform/addons/` | Helm add-ons: ALB Controller · metrics-server · External Secrets (+ IRSA) · kube-prometheus-stack | per environment |
 | `terraform/gateway/` | AWS API Gateway (HTTP API): routes `/auth/customer-login` to the lambda in `auto-repair-shop-lambda-auth`, everything else to the app | per environment |
+| `terraform/messaging/` | SNS topics (`saga-commands`, `so-events`, `billing-events`, `execution-events`) · SQS queues + DLQs · SNS→SQS subscriptions with filter policies | per environment |
 
 ```
 terraform/
 ├── bootstrap/   # S3 state bucket (run once)
-├── shared/      # ECR + GitHub OIDC + IAM roles (run once)
+├── shared/      # ECR (gateway + per-service repos) + GitHub OIDC + IAM roles (run once)
 ├── aws/         # VPC, EKS per env (workspaces: stg | prd)
 ├── addons/      # ALB controller + metrics-server + External Secrets + kube-prometheus-stack (per env)
-└── gateway/     # API Gateway: routes to the lambda + the app (per env)
+├── gateway/     # API Gateway: routes to the lambda + the app (per env)
+└── messaging/   # SNS/SQS topology for the saga and events (per env)
 ```
+
+### Messaging (`terraform/messaging/`)
+
+Physical names are `auto-repair-shop-<env>-<logical name>`; the services
+read queue URLs and topic ARNs from environment variables, never by name.
+Queues are Standard, with a DLQ per queue (`<queue>-dlq`, `maxReceiveCount=5`,
+14-day retention). Subscriptions use raw message delivery; the command topic
+`saga-commands` filters on the `target` message attribute. The full topology is
+in `docs/adr/0005-messaging-with-sns-sqs.md`.
+
+To check the layer without an AWS account, the `messaging-ministack` job in
+`infra.yml` runs on every PR: it applies the layer to a MiniStack container
+(`http://localhost:4566`, dummy credentials) and asserts 4 topics, 10 queues
+and 8 SQS subscriptions. To reproduce it locally:
+
+```
+docker run -d -p 4566:4566 ministackorg/ministack
+terraform -chdir=terraform/messaging init -backend=false
+terraform -chdir=terraform/messaging apply -auto-approve \
+  -var aws_endpoint=http://localhost:4566 -var manage_iam=false -var state_bucket=local
+aws --endpoint-url http://localhost:4566 sns list-topics
+```
+
+### ECR per microservice
+
+`terraform/shared/` creates one ECR repository per microservice
+(`service_repositories` in `variables.tf`), with the same settings as the
+gateway repository (immutable tags, scan on push, last 10 images kept). The
+output `service_repository_urls` lists them. The gateway repository
+(`auto-repair-shop`) is unchanged.
+
+> **Action required when `manage_iam = true`:** the deploy role's ECR policy
+> in `terraform/shared/oidc.tf` only allows pushes to `aws_ecr_repository.app`.
+> Add the new repositories to that policy (and to the trust condition if the
+> services' repos differ from `github_repo`) before their CI can push. On
+> Learner Lab (`manage_iam = false`) nothing needs to change: the static
+> credentials already have ECR push rights.
 
 ## Deploy — driven from GitHub Actions
 
@@ -105,6 +144,17 @@ runs in a degraded mode, auto-detected at runtime from
 provider, deploy/terraform roles or IRSA are created — so the ALB Controller
 and External Secrets add-ons are skipped). Override with the `AWS_AUTH_MODE`,
 `MANAGE_IAM`, `EXECUTION_ROLE_ARN` repo variables if needed.
+
+**Node IMDS hop limit.** Pods reach the node role's credentials through the
+instance metadata service, which needs an IMDSv2 hop limit of 2 to work from
+inside the pod network. `terraform/aws/eks.tf` sets it on the Lab node group
+(through the new `aws_launch_template.lab_nodes`) and on the module's
+`default` node group (`manage_iam = true`). Caution: attaching a launch
+template to the existing Lab node group may force a node group replacement,
+which evicts the running pods. Run `plan` on `aws` and check for
+`must be replaced` before any `apply`.
+
+**Security note.** With hop limit 2, any pod on a node can read the node role's credentials, so a server-side request forgery flaw in any service would expose them. The Learner Lab offers no IRSA, so this is a known, accepted risk, with the mitigations (a `NetworkPolicy` that blocks `169.254.169.254` for the pods that need no AWS access, or IRSA with hop limit 1 on an account with IAM rights) described in [ADR 0007](docs/adr/0007-imds-hop-limit-and-pod-credentials.md).
 
 ## Step-by-step walkthrough (AWS Academy Learner Lab)
 
