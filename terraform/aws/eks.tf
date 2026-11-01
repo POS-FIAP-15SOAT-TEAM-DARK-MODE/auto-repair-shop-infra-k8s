@@ -23,6 +23,15 @@ module "eks" {
       desired_size   = local.cfg.node_desired
       min_size       = local.cfg.node_min
       max_size       = local.cfg.node_max
+
+      # Pods read credentials from the node role via IMDS. A hop limit of 1
+      # (the default) blocks that from inside a pod network namespace, so raise
+      # it to 2. Same setting as the Lab node group (aws_launch_template.lab_nodes).
+      metadata_options = {
+        http_endpoint               = "enabled"
+        http_tokens                 = "required"
+        http_put_response_hop_limit = 2
+      }
     }
   }
 
@@ -56,6 +65,22 @@ resource "aws_eks_cluster" "lab" {
   tags = local.tags
 }
 
+# Lab nodes: IMDSv2 with hop limit 2 so pods can reach the instance role
+# credentials (the workloads use the LabRole static-credential path). Only
+# metadata options are set here; the instance type stays on the node group.
+resource "aws_launch_template" "lab_nodes" {
+  count       = var.manage_iam ? 0 : 1
+  name_prefix = "${local.name}-lab-nodes-"
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
+  }
+
+  tags = local.tags
+}
+
 resource "aws_eks_node_group" "lab" {
   count           = var.manage_iam ? 0 : 1
   cluster_name    = aws_eks_cluster.lab[0].name
@@ -63,6 +88,11 @@ resource "aws_eks_node_group" "lab" {
   node_role_arn   = var.execution_role_arn
   subnet_ids      = module.vpc.private_subnets
   instance_types  = local.cfg.node_types
+
+  launch_template {
+    id      = aws_launch_template.lab_nodes[0].id
+    version = aws_launch_template.lab_nodes[0].latest_version
+  }
 
   scaling_config {
     desired_size = local.cfg.node_desired
