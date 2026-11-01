@@ -154,6 +154,8 @@ template to the existing Lab node group may force a node group replacement,
 which evicts the running pods. Run `plan` on `aws` and check for
 `must be replaced` before any `apply`.
 
+**Security note.** With hop limit 2, any pod on a node can read the node role's credentials, so a server-side request forgery flaw in any service would expose them. The Learner Lab offers no IRSA, so this is a known, accepted risk, with the mitigations (a `NetworkPolicy` that blocks `169.254.169.254` for the pods that need no AWS access, or IRSA with hop limit 1 on an account with IAM rights) described in [ADR 0007](docs/adr/0007-imds-hop-limit-and-pod-credentials.md).
+
 ## Step-by-step walkthrough (AWS Academy Learner Lab)
 
 A concrete, click-by-click version of the "Deploy" section above, for anyone
