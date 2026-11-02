@@ -244,11 +244,26 @@ as the chart's built-in dashboards): request rate/latency by route, 5xx rate,
 service orders created, notification failures, status-transition volume and
 average time to reach each status.
 
+The saga dashboard — **"Auto Repair Shop — Saga"** (uid `auto-repair-shop-saga`,
+`dashboards/saga.json`, provisioned by `kubernetes_config_map_v1.saga_dashboard`
+in `dashboards.tf`) — shows started/completed/compensated rates, the
+compensation ratio, step duration p50/p95 by `step`, `outbox_pending` per
+service and `dlq_messages` per queue. The DLQ panel stays empty until the
+services expose `dlq_messages`; its description says so on the panel itself.
+In Grafana, open **Dashboards → Auto Repair Shop — Saga**.
+
 **Logs**: `loki-stack` (Loki + Promtail) is also installed into `monitoring`
 and wired as a Loki datasource on the same Grafana — use the **Explore** tab
 to query container logs (filter by `request_id` to follow one request across
 the app's structured JSON logs). No persistence, same short-lived-Lab
 reasoning as everything else here.
+
+**Tracing one saga**: on the Saga dashboard, paste the `saga_id` into the
+`saga_id` variable at the top; the "Logs do saga_id" panel then shows that
+saga's JSON log lines from every service (Loki query
+`{namespace=~".+"} | json | saga_id="<id>"`). The same works in Explore. The
+`saga_id` is the service order's `saga_instance.id` (see the app repo's
+F6 task doc for how it is propagated).
 
 Control-plane component scraping (`kubeControllerManager`/`kubeScheduler`/
 `kubeEtcd`/`kubeProxy`) is disabled: on managed EKS those control-plane
