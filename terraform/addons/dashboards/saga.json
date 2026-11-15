@@ -1,0 +1,134 @@
+{
+  "title": "Auto Repair Shop — Saga",
+  "uid": "auto-repair-shop-saga",
+  "tags": ["auto-repair-shop", "saga"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0
+      },
+      {
+        "name": "loki",
+        "type": "datasource",
+        "query": "loki",
+        "current": {},
+        "hide": 0
+      },
+      {
+        "name": "saga_id",
+        "label": "saga_id",
+        "description": "Cole um saga_id (UUID) para filtrar os logs do painel 'Logs do saga_id' em todos os serviços.",
+        "type": "textbox",
+        "query": "",
+        "current": { "text": "", "value": "" },
+        "hide": 0
+      },
+      {
+        "name": "service",
+        "label": "service",
+        "description": "Nome do serviço (campo JSON 'service') para filtrar o painel de logs por serviço. Regex; '.*' mostra todos.",
+        "type": "textbox",
+        "query": ".*",
+        "current": { "text": ".*", "value": ".*" },
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "title": "Fluxo da saga", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 300, "collapsed": false, "panels": [] },
+    {
+      "id": 301,
+      "type": "timeseries",
+      "title": "Sagas por segundo (iniciadas / concluídas / compensadas)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "targets": [
+        { "expr": "sum(rate(saga_started_total[5m]))", "legendFormat": "iniciadas" },
+        { "expr": "sum(rate(saga_completed_total[5m]))", "legendFormat": "concluídas" },
+        { "expr": "sum(rate(saga_compensated_total[5m]))", "legendFormat": "compensadas" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] }
+    },
+    {
+      "id": 302,
+      "type": "timeseries",
+      "title": "Taxa de compensação (compensadas / iniciadas, 5m)",
+      "description": "Fração de sagas iniciadas que terminaram compensadas. Vazio enquanto não houver sagas iniciadas no intervalo.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "targets": [
+        { "expr": "sum(rate(saga_compensated_total[5m])) / sum(rate(saga_started_total[5m]))", "legendFormat": "taxa de compensação" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] }
+    },
+    { "type": "row", "title": "Passos e filas", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 }, "id": 310, "collapsed": false, "panels": [] },
+    {
+      "id": 303,
+      "type": "timeseries",
+      "title": "Duração dos passos da saga (p50 / p95)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le, step) (rate(saga_step_duration_seconds_bucket[5m])))", "legendFormat": "p50 {{step}}" },
+        { "expr": "histogram_quantile(0.95, sum by (le, step) (rate(saga_step_duration_seconds_bucket[5m])))", "legendFormat": "p95 {{step}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 304,
+      "type": "timeseries",
+      "title": "Outbox pendente por serviço",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "targets": [
+        { "expr": "sum by (job, service) (outbox_pending)", "legendFormat": "{{job}} {{service}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "id": 305,
+      "type": "timeseries",
+      "title": "Mensagens em DLQ por fila (ainda não exposta pelos serviços)",
+      "description": "A métrica dlq_messages ainda NÃO é exposta pelos serviços: este painel fica vazio até ela ser implementada. A ausência de dados aqui não significa ausência de mensagens na DLQ; confira as filas *-dlq no SQS.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "targets": [
+        { "expr": "sum by (queue) (dlq_messages)", "legendFormat": "{{queue}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    { "type": "row", "title": "Logs", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 }, "id": 320, "collapsed": false, "panels": [] },
+    {
+      "id": 306,
+      "type": "logs",
+      "title": "Logs do saga_id (todos os serviços)",
+      "description": "Preencha a variável saga_id no topo. Os logs são JSON (Zap) com o campo saga_id; use-o para seguir a saga atravessando os serviços.",
+      "datasource": { "type": "loki", "uid": "${loki}" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 27 },
+      "targets": [
+        { "expr": "{namespace=~\".+\"} | json | saga_id=\"$saga_id\"" }
+      ],
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true }
+    },
+    {
+      "id": 307,
+      "type": "logs",
+      "title": "Logs por serviço",
+      "description": "Filtra pelo campo JSON service (variável service no topo; '.*' mostra todos).",
+      "datasource": { "type": "loki", "uid": "${loki}" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 39 },
+      "targets": [
+        { "expr": "{namespace=~\".+\"} | json | service=~\"$service\"" }
+      ],
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true }
+    }
+  ]
+}
